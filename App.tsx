@@ -239,9 +239,9 @@ const App: React.FC = () => {
               </div>
               <div className="flex flex-col">
                 <h1 className="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600">
-                  Toán Học Thông Minh
+                  GIA SƯ TOÁN PRO
                 </h1>
-                <span className="text-xs text-gray-500 font-medium tracking-wider">MATH PRACTICE PRO</span>
+                <span className="text-xs text-gray-500 font-medium tracking-wider">Math Tutor by Tran Hoai Thanh</span>
               </div>
             </div>
             <div className="flex gap-2">
