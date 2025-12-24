@@ -117,6 +117,11 @@ export const generateQuizQuestions = async (
          - Example Answer Format: "a = 1, b = -2, c = 3" (Clean text).
          - CORRECT ANSWER: Must be one of A, B, C, D.
       
+      4. ANSWER DISTRIBUTION (IMPORTANT):
+         - Ensure that the correct answers are evenly distributed among A, B, C, and D.
+         - Avoid making 'A' the correct answer too frequently.
+         - For ${count} questions, aim for approximately ${Math.ceil(count/4)} of each option.
+      
       Difficulty Definition for ${difficultyLabel} (${difficulty}):
       - Nhận biết (Recognition): Direct recall, simple calculation (1 step).
       - Thông hiểu (Understanding): Multi-step problem, apply formula (2-3 steps).
