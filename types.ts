@@ -3,6 +3,8 @@ export type EducationLevel = 'primary' | 'middle' | 'high';
 
 export type Difficulty = 'recognition' | 'understanding' | 'application';
 
+export type DifficultyMode = 'mixed' | 'recognition' | 'understanding' | 'application';
+
 export interface Question {
   id: string;
   text: string;
@@ -57,4 +59,24 @@ export interface QuizResult {
   score: number;
   totalQuestions: number;
   level: EducationLevel;
+}
+
+export interface StudentInfo {
+  name: string;
+  className: string; // "10A1", "6B"...
+}
+
+export interface SheetQuizResult {
+  timestamp: string;
+  studentName: string;
+  studentClass: string;
+  level: string;
+  grade: number;
+  topic: string;
+  totalQuestions: number;
+  correctCount: number;
+  incorrectCount: number;
+  scorePercent: number;
+  timeTakenSeconds: number;
+  details: { questionIndex: number; correct: boolean; difficulty: string }[];
 }

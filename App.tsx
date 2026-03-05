@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, GraduationCap, School, Brain, Sparkles, Calculator, PenTool, History, Settings } from 'lucide-react';
-import { EducationLevel, QuizState, GradeConfig, QuizResult } from './types';
+import { BookOpen, GraduationCap, School, Brain, Sparkles, Calculator, PenTool, History, Settings, User } from 'lucide-react';
+import { EducationLevel, QuizState, GradeConfig, QuizResult, StudentInfo, DifficultyMode } from './types';
 import { LEVELS, CURRICULUM, THEMES } from './constants';
 import { generateQuizQuestions } from './services/geminiService';
+import { submitQuizResult, buildSheetResult } from './services/googleSheetService';
 import QuizInterface from './components/QuizInterface';
 import ResultScreen from './components/ResultScreen';
 import HistoryModal from './components/HistoryModal';
 import ChatWidget from './components/ChatWidget';
 import SettingsModal from './components/SettingsModal';
+import StudentLoginModal from './components/StudentLoginModal';
 
 const App: React.FC = () => {
   // Setup State
@@ -15,6 +17,7 @@ const App: React.FC = () => {
   const [grade, setGrade] = useState<number>(1);
   const [topic, setTopic] = useState<string>('');
   const [customTopic, setCustomTopic] = useState<string>('');
+  const [difficultyMode, setDifficultyMode] = useState<DifficultyMode>('mixed');
 
   // History State
   const [history, setHistory] = useState<QuizResult[]>([]);
@@ -24,19 +27,47 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
   const [model, setModel] = useState(localStorage.getItem('gemini_model') || 'gemini-3-flash-preview');
+  const [sheetUrl, setSheetUrl] = useState(localStorage.getItem('google_sheet_url') || '');
+
+  // Student Info State
+  const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
+  const [isStudentLoginOpen, setIsStudentLoginOpen] = useState(false);
+  const [sheetNotification, setSheetNotification] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
   useEffect(() => {
+    // Load student info from localStorage
+    const savedName = localStorage.getItem('student_name');
+    const savedClass = localStorage.getItem('student_class');
+    if (savedName && savedClass) {
+      setStudentInfo({ name: savedName, className: savedClass });
+    } else {
+      setIsStudentLoginOpen(true);
+    }
+
     if (!localStorage.getItem('gemini_api_key')) {
       setIsSettingsOpen(true);
     }
   }, []);
 
-  const handleSaveSettings = (key: string, newModel: string) => {
+  const handleSaveSettings = (key: string, newModel: string, newSheetUrl: string) => {
     localStorage.setItem('gemini_api_key', key);
     localStorage.setItem('gemini_model', newModel);
+    if (newSheetUrl) {
+      localStorage.setItem('google_sheet_url', newSheetUrl);
+    } else {
+      localStorage.removeItem('google_sheet_url');
+    }
     setApiKey(key);
     setModel(newModel);
+    setSheetUrl(newSheetUrl);
     setIsSettingsOpen(false);
+  };
+
+  const handleSaveStudentInfo = (info: StudentInfo) => {
+    localStorage.setItem('student_name', info.name);
+    localStorage.setItem('student_class', info.className);
+    setStudentInfo(info);
+    setIsStudentLoginOpen(false);
   };
 
   // Quiz State
@@ -110,7 +141,7 @@ const App: React.FC = () => {
       setTimeout(() => setLoadingMsg("Đang phân bổ câu hỏi theo độ khó..."), 1000);
       setTimeout(() => setLoadingMsg("Đang kiểm tra kiến thức..."), 2500);
 
-      const questions = await generateQuizQuestions(level, grade, finalTopic);
+      const questions = await generateQuizQuestions(level, grade, finalTopic, difficultyMode);
 
       setQuizState({
         status: 'active',
@@ -152,10 +183,12 @@ const App: React.FC = () => {
   };
 
   const handleFinish = () => {
+    const finishTime = Date.now();
+
     // Create Result Object
     const result: QuizResult = {
-      id: Date.now().toString(),
-      date: Date.now(),
+      id: finishTime.toString(),
+      date: finishTime,
       grade: quizState.grade,
       topic: quizState.topic,
       score: quizState.score,
@@ -171,8 +204,33 @@ const App: React.FC = () => {
     setQuizState(prev => ({
       ...prev,
       status: 'finished',
-      endTime: Date.now()
+      endTime: finishTime
     }));
+
+    // Send to Google Sheets (async, non-blocking)
+    if (sheetUrl && studentInfo) {
+      const sheetResult = buildSheetResult(
+        studentInfo,
+        quizState.level,
+        quizState.grade,
+        quizState.topic,
+        quizState.questions,
+        quizState.userAnswers,
+        quizState.score,
+        quizState.startTime,
+        finishTime
+      );
+
+      submitQuizResult(sheetUrl, sheetResult).then(res => {
+        if (res.success) {
+          setSheetNotification({ type: 'success', msg: '✅ Đã đồng bộ kết quả lên Google Sheets!' });
+        } else {
+          setSheetNotification({ type: 'error', msg: `⚠️ ${res.message}` });
+        }
+        // Auto-hide notification after 5s
+        setTimeout(() => setSheetNotification(null), 5000);
+      });
+    }
   };
 
   const handleRetry = () => {
@@ -244,7 +302,19 @@ const App: React.FC = () => {
                 <span className="text-xs text-gray-500 font-medium tracking-wider">Math Tutor by Tran Hoai Thanh</span>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap justify-end">
+              {/* Student Info Badge */}
+              {studentInfo && (
+                <button
+                  onClick={() => setIsStudentLoginOpen(true)}
+                  className="flex items-center gap-2 text-xs md:text-sm px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 rounded-xl transition-all shadow-sm active:scale-95"
+                  title="Đổi thông tin học sinh"
+                >
+                  <User className="w-4 h-4" />
+                  <span className="hidden md:inline">{studentInfo.name} ({studentInfo.className})</span>
+                  <span className="md:hidden">{studentInfo.name.split(' ').pop()}</span>
+                </button>
+              )}
               <button
                 onClick={() => setIsSettingsOpen(true)}
                 className="flex items-center gap-2 text-xs md:text-sm px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold border border-red-200 rounded-xl transition-all shadow-sm active:scale-95"
@@ -390,21 +460,58 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Info Card */}
-              <div className={`p-6 rounded-2xl border ${currentTheme.border} bg-opacity-50 flex flex-col md:flex-row items-center justify-between gap-6`}>
-                <div className="flex items-center gap-4">
-                  <div className={`w-14 h-14 rounded-2xl ${currentTheme.primary} flex items-center justify-center text-white shadow-lg transform rotate-3`}>
-                    <Sparkles className="w-7 h-7" />
+              {/* Difficulty Mode Selector */}
+              <div className={`p-6 rounded-2xl border ${currentTheme.border} bg-opacity-50`}>
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-14 h-14 rounded-2xl ${currentTheme.primary} flex items-center justify-center text-white shadow-lg transform rotate-3`}>
+                      <Sparkles className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className={`font-bold text-lg ${currentTheme.text}`}>Cấu trúc bài thi</h3>
+                      <p className="text-sm opacity-80 text-gray-600 font-medium mt-1">
+                        20 câu hỏi • {difficultyMode === 'mixed' ? '3 mức độ' : '1 mức độ'} • Tự luyện tập
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className={`font-bold text-lg ${currentTheme.text}`}>Cấu trúc bài thi</h3>
-                    <p className="text-sm opacity-80 text-gray-600 font-medium mt-1">20 câu hỏi • 3 mức độ • Tự luyện tập</p>
+                  <div className="flex gap-2 flex-wrap justify-center">
+                    <button
+                      onClick={() => setDifficultyMode('mixed')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all transform active:scale-95
+                        ${difficultyMode === 'mixed'
+                          ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-200 scale-105'
+                          : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
+                    >
+                      Hỗn hợp
+                    </button>
+                    <button
+                      onClick={() => setDifficultyMode('recognition')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all transform active:scale-95
+                        ${difficultyMode === 'recognition'
+                          ? 'bg-green-500 text-white border-green-500 shadow-md shadow-green-200 scale-105'
+                          : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}`}
+                    >
+                      Nhận biết
+                    </button>
+                    <button
+                      onClick={() => setDifficultyMode('understanding')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all transform active:scale-95
+                        ${difficultyMode === 'understanding'
+                          ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-200 scale-105'
+                          : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'}`}
+                    >
+                      Thông hiểu
+                    </button>
+                    <button
+                      onClick={() => setDifficultyMode('application')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all transform active:scale-95
+                        ${difficultyMode === 'application'
+                          ? 'bg-red-500 text-white border-red-500 shadow-md shadow-red-200 scale-105'
+                          : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'}`}
+                    >
+                      Vận dụng
+                    </button>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-green-100 text-green-700 border border-green-200`}>Nhận biết</span>
-                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200`}>Thông hiểu</span>
-                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-red-100 text-red-700 border border-red-200`}>Vận dụng</span>
                 </div>
               </div>
 
@@ -468,6 +575,15 @@ const App: React.FC = () => {
     <>
       {renderContent()}
 
+      {/* Sheet Notification Toast */}
+      {sheetNotification && (
+        <div className={`fixed top-4 right-4 z-[200] px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-fade-in max-w-xs
+          ${sheetNotification.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}
+        >
+          {sheetNotification.msg}
+        </div>
+      )}
+
       <HistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
@@ -477,12 +593,21 @@ const App: React.FC = () => {
 
       <ChatWidget />
 
+      <StudentLoginModal
+        isOpen={isStudentLoginOpen}
+        onClose={() => setIsStudentLoginOpen(false)}
+        onSave={handleSaveStudentInfo}
+        currentInfo={studentInfo}
+        isMandatory={!studentInfo}
+      />
+
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         onSave={handleSaveSettings}
         currentApiKey={apiKey}
         currentModel={model}
+        currentSheetUrl={sheetUrl}
         isMandatory={!apiKey}
       />
     </>

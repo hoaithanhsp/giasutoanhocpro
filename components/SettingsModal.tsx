@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Check, AlertTriangle, Cpu } from 'lucide-react';
+import { X, Key, Check, AlertTriangle, Cpu, Sheet } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (apiKey: string, model: string) => void;
+  onSave: (apiKey: string, model: string, sheetUrl: string) => void;
   currentApiKey?: string;
   currentModel?: string;
+  currentSheetUrl?: string;
   isMandatory?: boolean; // If true, cannot close without saving valid key
 }
 
@@ -16,22 +17,25 @@ const MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Ổn định, tiết kiệm quota' },
 ];
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  onSave, 
-  currentApiKey = '', 
+const SettingsModal: React.FC<SettingsModalProps> = ({
+  isOpen,
+  onClose,
+  onSave,
+  currentApiKey = '',
   currentModel = 'gemini-3-flash-preview',
-  isMandatory = false 
+  currentSheetUrl = '',
+  isMandatory = false
 }) => {
   const [apiKey, setApiKey] = useState(currentApiKey);
   const [selectedModel, setSelectedModel] = useState(currentModel);
+  const [sheetUrl, setSheetUrl] = useState(currentSheetUrl);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setApiKey(currentApiKey);
     setSelectedModel(currentModel);
-  }, [currentApiKey, currentModel, isOpen]);
+    setSheetUrl(currentSheetUrl);
+  }, [currentApiKey, currentModel, currentSheetUrl, isOpen]);
 
   const handleSave = () => {
     if (!apiKey.trim()) {
@@ -39,7 +43,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       return;
     }
     setError(null);
-    onSave(apiKey.trim(), selectedModel);
+    onSave(apiKey.trim(), selectedModel, sheetUrl.trim());
     if (!isMandatory) onClose();
   };
 
@@ -48,7 +52,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-300">
-        
+
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
           <div className="flex items-center gap-3">
@@ -68,22 +72,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="p-6 space-y-6">
-          
+
           {/* API Key Section */}
           <div className="space-y-3">
             <label className="text-sm font-bold text-gray-700 flex items-center justify-between">
               <span>Google Gemini API Key <span className="text-red-500">*</span></span>
-              <a 
-                href="https://aistudio.google.com/api-keys" 
-                target="_blank" 
+              <a
+                href="https://aistudio.google.com/api-keys"
+                target="_blank"
                 rel="noreferrer"
                 className="text-xs text-blue-600 hover:text-blue-700 font-bold hover:underline"
               >
                 Lấy Key ở đâu?
               </a>
             </label>
-            <input 
-              type="password" 
+            <input
+              type="password"
               value={apiKey}
               onChange={(e) => {
                 setApiKey(e.target.value);
@@ -117,23 +121,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   key={model.id}
                   onClick={() => setSelectedModel(model.id)}
                   className={`relative p-3 rounded-xl border-2 text-left transition-all group
-                    ${selectedModel === model.id 
-                      ? 'border-blue-500 bg-blue-50/50 shadow-sm' 
+                    ${selectedModel === model.id
+                      ? 'border-blue-500 bg-blue-50/50 shadow-sm'
                       : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50'
                     }
                   `}
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                        <div className={`font-bold text-sm ${selectedModel === model.id ? 'text-blue-700' : 'text-gray-700'}`}>
-                            {model.name}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">{model.desc}</div>
+                      <div className={`font-bold text-sm ${selectedModel === model.id ? 'text-blue-700' : 'text-gray-700'}`}>
+                        {model.name}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">{model.desc}</div>
                     </div>
                     {selectedModel === model.id && (
-                        <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white shadow-sm">
-                            <Check className="w-3 h-3" />
-                        </div>
+                      <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white shadow-sm">
+                        <Check className="w-3 h-3" />
+                      </div>
                     )}
                   </div>
                 </button>
@@ -141,11 +145,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          {/* Google Sheets URL Section */}
+          <div className="space-y-3">
+            <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+              <Sheet className="w-4 h-4 text-green-600" />
+              Google Sheets URL
+              <span className="text-xs text-gray-400 font-normal">(Tùy chọn)</span>
+            </label>
+            <input
+              type="url"
+              value={sheetUrl}
+              onChange={(e) => setSheetUrl(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+              className="w-full p-3 rounded-xl border-2 border-gray-200 focus:ring-4 focus:ring-green-500/10 focus:border-green-500 outline-none transition-all text-sm"
+            />
+            <p className="text-xs text-gray-400">
+              Dán URL của Google Apps Script Web App đã deploy. Kết quả làm bài sẽ tự động đồng bộ lên Google Sheets.
+            </p>
+          </div>
+
         </div>
 
         {/* Footer */}
         <div className="p-6 pt-2">
-          <button 
+          <button
             onClick={handleSave}
             className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all text-sm uppercase tracking-wide"
           >

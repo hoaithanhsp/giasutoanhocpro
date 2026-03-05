@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { Question, EducationLevel, Difficulty } from "../types";
+import { Question, EducationLevel, Difficulty, DifficultyMode } from "../types";
 
 // --- CONFIGURATION & HELPERS ---
 
@@ -77,7 +77,8 @@ const arraySchema: Schema = {
 export const generateQuizQuestions = async (
   level: EducationLevel,
   grade: number,
-  topic: string
+  topic: string,
+  difficultyMode: DifficultyMode = 'mixed'
 ): Promise<Question[]> => {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -85,7 +86,18 @@ export const generateQuizQuestions = async (
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const dist = getDistribution(level, grade);
+
+  // Determine distribution based on difficulty mode
+  let dist: Distribution;
+  if (difficultyMode === 'mixed') {
+    dist = getDistribution(level, grade);
+  } else if (difficultyMode === 'recognition') {
+    dist = { recognition: 20, understanding: 0, application: 0 };
+  } else if (difficultyMode === 'understanding') {
+    dist = { recognition: 0, understanding: 20, application: 0 };
+  } else {
+    dist = { recognition: 0, understanding: 0, application: 20 };
+  }
 
   // Helper with Fallback/Retry Logic
   const generateBatch = async (count: number, difficulty: Difficulty, difficultyLabel: string): Promise<Question[]> => {
@@ -99,28 +111,30 @@ export const generateQuizQuestions = async (
     const prompt = `
       Generate ${count} [${difficulty}] level math questions for Grade ${grade} on topic '${topic}' following Vietnamese curriculum.
       
-      CRITICAL FORMATTING RULES (STRICTLY NO LATEX):
-      1. DO NOT use LaTeX syntax. NO '$', NO '\\frac', NO '\\sqrt', NO '\\cdot', NO '\\Rightarrow'.
-      2. USE UNICODE characters for all math symbols to make it visual and readable as plain text:
-         - Powers/Indices: Use superscripts/subscripts. Example: x², x³, aⁿ, x₁, x₂. (NOT x^2, x_1)
-         - Fractions: Use slash or Unicode fractions. Example: 1/2, 3/4, ½, ⅓, (a+b)/c. (NOT \\frac{a}{b})
-         - Roots: Use symbol. Example: √x, ∛x. (NOT \\sqrt{x})
-         - Multiplication: Use '×' or '·'. (NOT *)
-         - Arrows: Use '⇒' for implication, '⇔' for equivalent, '→' for arrow.
-         - Geometry: ∠A, ΔABC, ⊥, ||, π, °.
-         - Sets/Logic: ∈, ⊂, ∪, ∩, ∅, ∀, ∃.
-         - Comparison: ≠, ≤, ≥, ≈.
+      CRITICAL FORMATTING RULES (MATHJAX LATEX):
+      1. USE LaTeX syntax wrapped in \\(...\\) for ALL inline math formulas.
+         Examples:
+         - Powers: \\(x^2\\), \\(a^n\\)
+         - Fractions: \\(\\frac{1}{2}\\), \\(\\frac{a+b}{c}\\)
+         - Roots: \\(\\sqrt{x}\\), \\(\\sqrt[3]{x}\\)
+         - Subscripts: \\(x_1\\), \\(x_2\\)
+         - Multiplication: \\(a \\cdot b\\) or \\(a \\times b\\)
+         - Geometry: \\(\\angle A\\), \\(\\triangle ABC\\), \\(\\perp\\), \\(\\parallel\\)
+         - Sets: \\(\\in\\), \\(\\subset\\), \\(\\cup\\), \\(\\cap\\), \\(\\emptyset\\)
+         - Comparison: \\(\\neq\\), \\(\\leq\\), \\(\\geq\\)
+         - Arrows: \\(\\Rightarrow\\), \\(\\Leftrightarrow\\)
+      2. Use \\[...\\] for display (block) math only when needed for complex expressions.
+      3. Regular Vietnamese text stays as plain text, only math expressions use LaTeX.
       
-      3. CONTENT STRUCTURE:
+      4. CONTENT STRUCTURE:
          - Questions must be in Vietnamese.
          - Explanation must be step-by-step using bullet points (-) or new lines for readability.
-         - Example Answer Format: "a = 1, b = -2, c = 3" (Clean text).
          - CORRECT ANSWER: Must be one of A, B, C, D.
       
-      4. ANSWER DISTRIBUTION (IMPORTANT):
+      5. ANSWER DISTRIBUTION (IMPORTANT):
          - Ensure that the correct answers are evenly distributed among A, B, C, and D.
          - Avoid making 'A' the correct answer too frequently.
-         - For ${count} questions, aim for approximately ${Math.ceil(count/4)} of each option.
+         - For ${count} questions, aim for approximately ${Math.ceil(count / 4)} of each option.
       
       Difficulty Definition for ${difficultyLabel} (${difficulty}):
       - Nhận biết (Recognition): Direct recall, simple calculation (1 step).
@@ -130,10 +144,10 @@ export const generateQuizQuestions = async (
       Output JSON format:
       [
         { 
-          "text": "Unicode Question text...", 
+          "text": "Question with \\\\(LaTeX\\\\) formulas...", 
           "options": ["A. ...", "B. ...", "C. ...", "D. ..."], 
           "correctAnswer": "A", 
-          "explanation": "- Step 1: ...\n- Step 2: ...\n=> Conclusion...", 
+          "explanation": "- Bước 1: ...\n- Bước 2: ...\n⇒ Kết luận...", 
           "difficulty": "${difficulty}" 
         }
       ]
@@ -225,9 +239,20 @@ export const getChatTutorResponse = async (history: ChatMessage[], newMessage: s
     - Nhiệm vụ: Giúp học sinh hiểu bài, giải toán từ ảnh (OCR), và hướng dẫn tư duy.
     - Đối tượng: Học sinh từ lớp 1 đến lớp 12.
 
-    QUY TẮC ĐỊNH DẠNG TOÁN HỌC (UNICODE ONLY - NO LATEX):
-    - KHÔNG dùng cú pháp LaTeX ($, \\frac, \\sqrt...).
-    - Dùng ký tự Unicode: 1/2, x², √x, ⇒, ΔABC, ∠A, π, °...
+    QUY TẮC ĐỊNH DẠNG TOÁN HỌC (MATHJAX LATEX):
+    - Dùng cú pháp LaTeX cho TẤT CẢ công thức toán:
+      + Inline math: \\(...\\) — ví dụ: \\(x^2 + 3x + 2 = 0\\)
+      + Display math: \\[...\\] — cho công thức phức tạp, ví dụ: \\[\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\]
+    - KHÔNG dùng $ hoặc $$ làm delimiter.
+    - Các ký hiệu thường dùng:
+      + Phân số: \\(\\frac{a}{b}\\)
+      + Căn: \\(\\sqrt{x}\\), \\(\\sqrt[n]{x}\\)
+      + Lũy thừa: \\(x^n\\), chỉ số: \\(x_i\\)
+      + Hình học: \\(\\triangle ABC\\), \\(\\angle A\\), \\(\\perp\\), \\(\\parallel\\)
+      + Tích phân: \\(\\int_a^b f(x)dx\\)
+      + Tổng: \\(\\sum_{i=1}^{n} a_i\\)
+      + Giới hạn: \\(\\lim_{x \\to a} f(x)\\)
+    - Văn bản thường (tiếng Việt) viết bình thường, chỉ công thức toán mới bọc trong \\(...\\) hoặc \\[...\\].
 
     QUY TẮC SƯ PHẠM CHUNG:
     1. Hiểu câu hỏi & Xác nhận.
